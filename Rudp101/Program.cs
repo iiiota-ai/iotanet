@@ -92,7 +92,7 @@ static async Task RunSender()
     }
     else
     {
-        Console.WriteLine($"Received upexpected packed: {ack.Flags} seq={ack.Sequence}");
+        Console.WriteLine($"Received upexpected packet: {ack.Flags} seq={ack.Sequence}");
     }    
 }
 
