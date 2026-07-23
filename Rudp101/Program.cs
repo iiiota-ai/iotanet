@@ -21,7 +21,7 @@ static async Task RunReceiver()
 {
     // 创建UdpClient，绑定9000端口
     using var udp = new UdpClient(9000);    
-    Console.Write($"Receiver listening on 127.0.0.1:9000");
+    Console.WriteLine($"Receiver listening on 127.0.0.1:9000");
 
     // 循环ReceiveAsync
     while (true)
