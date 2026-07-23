@@ -2,6 +2,9 @@
 using System.Net.Sockets;
 using System.Text;
 
+const int timeoutMs = 500;
+const int maxRetries = 5;
+
 if(args.Length == 0)
 {
     Console.WriteLine($"usage: dotnet run -- receiver|sender");
@@ -79,21 +82,43 @@ static async Task RunSender()
     byte[] data = RudpPacketCodec.Encode(packet);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
 
-    // SendAsync 到 127.0.0.1:9000
-    await udp.SendAsync(data, data.Length, target);
-    Console.WriteLine($"Sent DATA seq={packet.Sequence}");
+    for(int attempt = 1; attempt <= maxRetries; attempt++)
+    {
+        // SendAsync 到 127.0.0.1:9000
+        await udp.SendAsync(data, data.Length, target);
+        Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
+        
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
+            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
 
-    // 等待ACK
-    UdpReceiveResult result = await udp.ReceiveAsync();
-    RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
-    if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
-    {
-        Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
+            if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
+            {
+                Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
+                return;
+            }
+
+            Console.WriteLine($"Received unexpected packet: {ack.Flags} seq={ack.Sequence}");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine($"Timeout waiting ACK seq={packet.Sequence}");
+        }
+        catch (SocketException ex) when (
+            ex.SocketErrorCode == SocketError.ConnectionReset ||
+            ex.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            Console.WriteLine($"No ACK endpoint available for seq={packet.Sequence}: {ex.SocketErrorCode}");
+        }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"Drop invalid packet while waiting ACK: {ex.Message}");
+        }
     }
-    else
-    {
-        Console.WriteLine($"Received upexpected packet: {ack.Flags} seq={ack.Sequence}");
-    }    
+
+    Console.WriteLine($"Failed to receive ACK seq={packet.Sequence} after {maxRetries} attempts");
 }
 
 static byte[] TestEncode()
