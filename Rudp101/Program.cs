@@ -44,6 +44,17 @@ static async Task RunReceiver()
             }
             // 把收到的 bytes 转字符串并打印
             Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+
+            // Ack确认包
+            var ack = new RudpPacket
+            {
+                Flags = PacketFlags.Ack,
+                Sequence = packet.Sequence,
+                Payload = Array.Empty<Byte>()
+            };
+            byte[] ackBytes = RudpPacketCodec.Encode(ack);
+            await udp.SendAsync(ackBytes, ackBytes.Length, result.RemoteEndPoint);
+            Console.WriteLine($"Sent ACK seq={ack.Sequence} to {result.RemoteEndPoint}");
         }
         catch(ArgumentException ex)
         {
@@ -70,7 +81,19 @@ static async Task RunSender()
 
     // SendAsync 到 127.0.0.1:9000
     await udp.SendAsync(data, data.Length, target);
-    
+    Console.WriteLine($"Sent DATA seq={packet.Sequence}");
+
+    // 等待ACK
+    UdpReceiveResult result = await udp.ReceiveAsync();
+    RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
+    if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
+    {
+        Console.WriteLine($"Received ACK req={ack.Sequence} from {result.RemoteEndPoint}");
+    }
+    else
+    {
+        Console.WriteLine($"Received upexpected packed: {ack.Flags} seq={ack.Sequence}");
+    }    
 }
 
 static byte[] TestEncode()
