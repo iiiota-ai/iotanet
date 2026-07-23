@@ -64,12 +64,12 @@ static byte[] TestEncode()
     };
     Console.WriteLine($"TestEncode Flags:{packet.Flags} Sequence:{packet.Sequence} Payload:{Encoding.UTF8.GetString(packet.Payload)}");
 
-    byte[] bytes = RudpPacketCodeC.Encode(packet);
+    byte[] bytes = RudpPacketCodec.Encode(packet);
     return bytes;
 }
 
 static void TestDecode(byte[] bytes)
 {
-    RudpPacket decoded = RudpPacketCodeC.Decode(bytes);
+    RudpPacket decoded = RudpPacketCodec.Decode(bytes);
     Console.WriteLine($"TestDecode Flags:{decoded.Flags} Sequence:{decoded.Sequence} Payload:{Encoding.UTF8.GetString(decoded.Payload)}");
 }

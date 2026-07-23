@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 /// <summary>
 /// 编解码器
 /// </summary>
-public static class RudpPacketCodeC
+public static class RudpPacketCodec
 {
 
     /// <summary>
@@ -18,8 +18,8 @@ public static class RudpPacketCodeC
 
         int start = 0;
         int length = 0;
-        int totalLenth = RudpProtocol.HeaderSize + packet.Payload.Length;
-        byte[] buffer = new byte[totalLenth];
+        int totalLength = RudpProtocol.HeaderSize + packet.Payload.Length;
+        byte[] buffer = new byte[totalLength];
 
         // 写入 Magic
         length = RudpProtocol.MagicSize;
@@ -42,7 +42,7 @@ public static class RudpPacketCodeC
         length = RudpProtocol.SequenceSize;
         BinaryPrimitives.WriteUInt32BigEndian(
             buffer.AsSpan(start, length),
-            (ushort)packet.Sequence
+            packet.Sequence
         );
         start += RudpProtocol.SequenceSize;
 
@@ -102,6 +102,11 @@ public static class RudpPacketCodeC
         length = RudpProtocol.LengthSize;
         ushort payloadLength = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(start, length));
         start += length;
+
+        if(start + payloadLength != buffer.Length)
+        {
+            throw new ArgumentException($"Invalid payload length.", nameof(buffer));
+        }
         
         // 读取 Payload
         byte[] payload = buffer.AsSpan(start, payloadLength).ToArray();
