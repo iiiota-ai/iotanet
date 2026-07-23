@@ -50,6 +50,9 @@ public static class RudpProtocol
     public const int HeaderSize = MagicSize + VersionSize + FlagsSize + SequenceSize + LengthSize;
 }
 
+/// <summary>
+/// Rudp包的组成结构
+/// </summary>
 public sealed class RudpPacket
 {
     /// <summary>

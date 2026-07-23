@@ -16,6 +16,11 @@ else if(args[0] == "sender")
 {
     await RunSender();
 }
+else if(args[0] == "testcodec")
+{
+    var bytes = TestEncode();
+    TestDecode(bytes);
+}
 
 static async Task RunReceiver()
 {
@@ -47,4 +52,24 @@ static async Task RunSender()
     // SendAsync 到 127.0.0.1:9000
     await udp.SendAsync(data, data.Length, target);
     
+}
+
+static byte[] TestEncode()
+{
+    var packet = new RudpPacket
+    {
+        Flags = PacketFlags.Data,
+        Sequence = 1,
+        Payload = Encoding.UTF8.GetBytes("你好，rudp")
+    };
+    Console.WriteLine($"TestEncode Flags:{packet.Flags} Sequence:{packet.Sequence} Payload:{Encoding.UTF8.GetString(packet.Payload)}");
+
+    byte[] bytes = RudpPacketCodeC.Encode(packet);
+    return bytes;
+}
+
+static void TestDecode(byte[] bytes)
+{
+    RudpPacket decoded = RudpPacketCodeC.Decode(bytes);
+    Console.WriteLine($"TestDecode Flags:{decoded.Flags} Sequence:{decoded.Sequence} Payload:{Encoding.UTF8.GetString(decoded.Payload)}");
 }
