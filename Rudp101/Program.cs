@@ -40,7 +40,7 @@ static async Task RunReceiver()
             if(packet.Flags != PacketFlags.Data)
             {
                 Console.WriteLine($"Drop non-Data packet from {result.RemoteEndPoint}: {packet.Flags}");
-                return;
+                continue;
             }
             // 把收到的 bytes 转字符串并打印
             Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
@@ -88,7 +88,7 @@ static async Task RunSender()
     RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
     if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
     {
-        Console.WriteLine($"Received ACK req={ack.Sequence} from {result.RemoteEndPoint}");
+        Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
     }
     else
     {
