@@ -10,13 +10,41 @@ if(args.Length == 0)
 
 if(args[0] == "receiver")
 {
-    // TODO: 创建UdpClient，绑定9000端口
-    // TODO: 循环ReceiveAsync
-    // TODO: 把收到的 bytes 转字符串并打印
+    await RunReceiver();
 }
 else if(args[0] == "sender")
 {
-    // TODO: 创建 UdpClient
-    // TODO: 把 "hello udp" 转成 bytes
-    // TODO: SendAsync 到 127.0.0.1:9000
+    await RunSender();
+}
+
+static async Task RunReceiver()
+{
+    // 创建UdpClient，绑定9000端口
+    using var udp = new UdpClient(9000);    
+    Console.Write($"Receiver listening on 127.0.0.1:9000");
+
+    // 循环ReceiveAsync
+    while (true)
+    {
+        UdpReceiveResult result = await udp.ReceiveAsync();        
+        string text= Encoding.UTF8.GetString(result.Buffer);
+        
+        // 把收到的 bytes 转字符串并打印
+        Console.WriteLine($"From {result.RemoteEndPoint}: {text}");
+    }
+    
+}
+
+static async Task RunSender()
+{
+    // 创建 UdpClient
+    using var udp = new UdpClient();
+
+    // 把 "hello udp" 转成 bytes
+    byte[] data = Encoding.UTF8.GetBytes("hello udp");
+    var target = new IPEndPoint(IPAddress.Loopback, 9000);
+
+    // SendAsync 到 127.0.0.1:9000
+    await udp.SendAsync(data, data.Length, target);
+    
 }
