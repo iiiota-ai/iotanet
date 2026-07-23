@@ -31,14 +31,25 @@ static async Task RunReceiver()
     // 循环ReceiveAsync
     while (true)
     {
-        UdpReceiveResult result = await udp.ReceiveAsync();        
+        UdpReceiveResult result = await udp.ReceiveAsync();
         // string text= Encoding.UTF8.GetString(result.Buffer);
-        var packet = RudpPacketCodec.Decode(result.Buffer);
-        
-        // 把收到的 bytes 转字符串并打印
-        Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
-    }
-    
+
+        try
+        {
+            var packet = RudpPacketCodec.Decode(result.Buffer);
+            if(packet.Flags != PacketFlags.Data)
+            {
+                Console.WriteLine($"Drop non-Data packet from {result.RemoteEndPoint}: {packet.Flags}");
+                return;
+            }
+            // 把收到的 bytes 转字符串并打印
+            Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+        }
+        catch(ArgumentException ex)
+        {
+            Console.WriteLine($"Drop invalid packet from {result.RemoteEndPoint}: {ex.Message}");
+        }        
+    }    
 }
 
 static async Task RunSender()
