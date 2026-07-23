@@ -32,10 +32,11 @@ static async Task RunReceiver()
     while (true)
     {
         UdpReceiveResult result = await udp.ReceiveAsync();        
-        string text= Encoding.UTF8.GetString(result.Buffer);
+        // string text= Encoding.UTF8.GetString(result.Buffer);
+        var packet = RudpPacketCodec.Decode(result.Buffer);
         
         // 把收到的 bytes 转字符串并打印
-        Console.WriteLine($"From {result.RemoteEndPoint}: {text}");
+        Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
     }
     
 }
@@ -46,7 +47,14 @@ static async Task RunSender()
     using var udp = new UdpClient();
 
     // 把 "hello udp" 转成 bytes
-    byte[] data = Encoding.UTF8.GetBytes("hello udp");
+    // byte[] data = Encoding.UTF8.GetBytes("hello udp");
+    var packet = new RudpPacket
+    {
+        Flags = PacketFlags.Data,
+        Sequence = 1,
+        Payload = Encoding.UTF8.GetBytes("hello rudp")
+    };
+    byte[] data = RudpPacketCodec.Encode(packet);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
 
     // SendAsync 到 127.0.0.1:9000
