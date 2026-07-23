@@ -31,6 +31,8 @@ static async Task RunReceiver()
     using var udp = new UdpClient(9000);    
     Console.WriteLine($"Receiver listening on 127.0.0.1:9000");
 
+    // 已接收包序号
+    var deliveredSequences = new HashSet<uint>();
     // 循环ReceiveAsync
     while (true)
     {
@@ -45,8 +47,18 @@ static async Task RunReceiver()
                 Console.WriteLine($"Drop non-Data packet from {result.RemoteEndPoint}: {packet.Flags}");
                 continue;
             }
-            // 把收到的 bytes 转字符串并打印
-            Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+
+            // 重复packet也必须发ACK
+            bool isDuplicate = !deliveredSequences.Add(packet.Sequence);
+            if (isDuplicate)
+            {
+                Console.WriteLine($"Duplicate DATA seq={packet.Sequence}, payload ignored");
+            }
+            else
+            {
+                // 把收到的 bytes 转字符串并打印
+                Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+            }
 
             // Ack确认包
             var ack = new RudpPacket
