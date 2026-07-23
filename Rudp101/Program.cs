@@ -31,8 +31,8 @@ static async Task RunReceiver()
     using var udp = new UdpClient(9000);    
     Console.WriteLine($"Receiver listening on 127.0.0.1:9000");
 
-    // 已接收包序号
-    var deliveredSequences = new HashSet<uint>();
+    // 期望接收的包序号
+    uint expectedSequence = 1;
     // 循环ReceiveAsync
     while (true)
     {
@@ -48,16 +48,20 @@ static async Task RunReceiver()
                 continue;
             }
 
-            // 重复packet也必须发ACK
-            bool isDuplicate = !deliveredSequences.Add(packet.Sequence);
-            if (isDuplicate)
+            // 旧包(重复包)已接收过
+            if(packet.Sequence < expectedSequence)
             {
                 Console.WriteLine($"Duplicate DATA seq={packet.Sequence}, payload ignored");
             }
+            // 只交付预期包，其他丢弃但仍然ACK
+            else if(packet.Sequence == expectedSequence)
+            {
+                Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+                expectedSequence++;
+            }
             else
             {
-                // 把收到的 bytes 转字符串并打印
-                Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+                Console.WriteLine($"Out-of-order DATA seq={packet.Sequence}, expected={expectedSequence} payload={Encoding.UTF8.GetString(packet.Payload)}");
             }
 
             // Ack确认包
