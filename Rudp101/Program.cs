@@ -150,7 +150,7 @@ static async Task RunReceiver(bool dropFirstAck)
         {
             Console.WriteLine($"Drop invalid packet from {result.RemoteEndPoint}: {ex.Message}");
         }
-    }    
+    }
 }
 
 static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
@@ -219,16 +219,8 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
 {
     using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
-    
-    // 窗口范围：[baseSequence, baseSequence + windowSize)
 
-    // 当前窗口做左边，最早未确认交付的包
-    uint baseSequence = 1;
-    // 下一个可发送的包
-    uint nextSequence = 1;
-
-    // 缓存已发送但可能需要重传的包
-    var sentPackets = new Dictionary<uint, byte[]>();
+    var window = new RudpSendWindow(options.TotalMessages, options.WindowSize);
 
     // 模拟丢包是否已发生一次
     bool windowDropConsumed = false;
@@ -236,37 +228,37 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
     // 连续超时计数器
     int consecutiveTimeouts = 0;
 
-    // 还有未读消息
-    while(baseSequence <= options.TotalMessages)
+    // 还有未发消息
+    while(!window.IsCompleted)
     {
         // 尽量填满窗口
-        while(nextSequence <= options.TotalMessages && nextSequence < baseSequence + options.WindowSize)
+        while(window.CanSend)
         {
+            var sequence = window.NextSequence;
+
             var packet = new RudpPacket
             {
                 Flags = PacketFlags.Data,
-                Sequence = nextSequence,
-                Payload = Encoding.UTF8.GetBytes($"message {nextSequence}")
+                Sequence = sequence,
+                Payload = Encoding.UTF8.GetBytes($"message {sequence}")
             };
 
             byte[] data = RudpPacketCodec.Encode(packet);
 
-            // 缓存已发送的包
-            sentPackets[nextSequence] = data;
+            window.MarkSent(packet.Sequence, data);
 
             // 模拟丢包
-            bool shouldDrop = dropFirstSendOfSequence.HasValue && !windowDropConsumed && nextSequence == dropFirstSendOfSequence.Value;
+            bool shouldDrop = dropFirstSendOfSequence.HasValue && !windowDropConsumed && sequence == dropFirstSendOfSequence.Value;
             if(shouldDrop)
             {
                 windowDropConsumed = true;
-                Console.WriteLine($"Window simulate lost DATA seq={nextSequence}");
+                Console.WriteLine($"Window simulate lost DATA seq={sequence}");
             }
             else
             {
                 await udp.SendAsync(data, data.Length, target);
-                Console.WriteLine($"window send DATA seq={nextSequence}");
+                Console.WriteLine($"window send DATA seq={sequence}");
             }
-            nextSequence++;
         }
 
         // 等ACK或超时
@@ -285,21 +277,15 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
 
             Console.WriteLine($"Window received ACK seq={ack.Sequence}");
 
-            if(ack.Sequence < baseSequence)
+            if (window.TryAck(ack.Sequence))
             {
-                Console.WriteLine($"Window duplicate ACK seq={ack.Sequence}, base={baseSequence}");
-                continue;
+                // 窗口移动则重置
+                consecutiveTimeouts = 0;
             }
-
-            // 移动窗口左侧，已确认交付指针
-            uint oldBase = baseSequence;
-            baseSequence = ack.Sequence + 1;
-            // 窗口移动则重置
-            consecutiveTimeouts = 0;
-            
-            for(uint seq = oldBase; seq < baseSequence; seq++)
+            else
             {
-                sentPackets.Remove(seq);
+                Console.WriteLine($"Window duplicate ACK seq={ack.Sequence}, base={window.BaseSequence}");
+                continue;
             }
         }
         catch(OperationCanceledException)
@@ -313,9 +299,11 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
                 return false;
             }
 
-            Console.WriteLine($"Window timeout, resend from seq={baseSequence}");
+            Console.WriteLine($"Window timeout, resend from seq={window.BaseSequence}");
+
+            var retryPackets = window.GetPacketsForRetransmit();
             
-            foreach(var item in sentPackets.OrderBy(x => x.Key))
+            foreach(var item in retryPackets)
             {
                 await udp.SendAsync(item.Value, item.Value.Length, target);
                 Console.WriteLine($"Window resend DATA seq={item.Key}");
