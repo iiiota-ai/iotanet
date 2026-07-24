@@ -67,10 +67,8 @@ static async Task RunReceiver(bool dropFirstAck)
     using var udp = new UdpClient(9000);    
     Console.WriteLine($"Receiver listening on 127.0.0.1:9000");
 
-    // 期望接收的包序号
-    uint expectedSequence = 1;
-    // 缓存乱序包，表示提前到达但还不能交付
-    var pendingPackets = new Dictionary<uint, RudpPacket>();
+    var receiveState = new RudpReceiveState();
+
     // 模拟丢弃ACK包
     bool firstAckDropped = false;
 
@@ -106,38 +104,22 @@ static async Task RunReceiver(bool dropFirstAck)
                 continue;
             }
 
-            // 旧包(重复包)已接收过，丢弃但仍ACK
-            if(packet.Sequence < expectedSequence)
-            {
-                Console.WriteLine($"Duplicate DATA seq={packet.Sequence}, payload ignored");
-            }
-            // 只交付预期包，并且查看缓存中是否有下一seq包
-            else if(packet.Sequence == expectedSequence)
-            {
-                Deliver(result, packet);
-                expectedSequence++;
+            IReadOnlyList<RudpPacket> deliveredPackets = receiveState.Accept(packet);
 
-                while(pendingPackets.Remove(expectedSequence, out RudpPacket? pendingPacket))
-                {
-                    Deliver(result, pendingPacket);
-                    expectedSequence++;
-                }
+            if(deliveredPackets.Count == 0)
+            {
+                Console.WriteLine($"DATA seq={packet.Sequence} not delivered, ACK={receiveState.LastAckSequence}");
             }
-            // 乱序包进行缓存
             else
             {
-                if(pendingPackets.TryAdd(packet.Sequence, packet))
+                foreach(RudpPacket deliveredPacket in deliveredPackets)
                 {
-                    Console.WriteLine($"Buffered out-of-order DATA seq={packet.Sequence}, expected={expectedSequence}");
-                }
-                else
-                {
-                    Console.WriteLine($"Duplicate buffered DATA seq={packet.Sequence}, payload ignored");
+                    Deliver(result, deliveredPacket);
                 }
             }
             
             // 确认已ACK的包
-            uint ackSequence = expectedSequence - 1;
+            uint ackSequence = receiveState.LastAckSequence;
 
             // 模拟首个 ACK 丢失，让 sender 超时重传
             if(dropFirstAck && !firstAckDropped)
