@@ -25,7 +25,14 @@ else if(args[0] == "sender")
     bool reorder = args.Length > 1 && args[1] == "reorder";
     // 是否使用不等待立即的发送方式
     bool fireOrder = args.Length > 1 && args[1] == "fireorder";
-    if (fireOrder)
+    // 是否使用滑动窗口发送
+    bool window = args.Length > 1 && args[1] == "window";
+
+    if (window)
+    {
+        await WindowSender();
+    }
+    else if (fireOrder)
     {
         await FireOrderSender();
     }
@@ -186,12 +193,97 @@ static async Task FireOrderSender()
         };
 
         byte[] data = RudpPacketCodec.Encode(packet);
-        
+
         await udp.SendAsync(data, data.Length, target);
 
         Console.WriteLine($"Fire DATA seq={seq}");
 
         await Task.Delay(100);
+    }
+}
+
+static async Task WindowSender()
+{
+    using var udp = new UdpClient(0);
+    var target = new IPEndPoint(IPAddress.Loopback, 9000);
+    
+    // 窗口范围：[baseSequence, baseSequence + windowSize)
+
+    // 总消息数量
+    const int totalMessages = 6;
+    // 固定窗口大小
+    const int windowSize = 3;
+
+    // 当前窗口做左边，最早未确认交付的包
+    uint baseSequence = 1;
+    // 下一个可发送的包
+    uint nextSequence = 1;
+
+    // 缓存已发送但可能需要重传的包
+    var sentPackets = new Dictionary<uint, byte[]>();
+
+    // 还有未读消息
+    while(baseSequence <= totalMessages)
+    {
+        // 尽量填满窗口
+        while(nextSequence <= totalMessages && nextSequence < baseSequence + windowSize)
+        {
+            var packet = new RudpPacket
+            {
+                Flags = PacketFlags.Data,
+                Sequence = nextSequence,
+                Payload = Encoding.UTF8.GetBytes($"message {nextSequence}")
+            };
+
+            byte[] data = RudpPacketCodec.Encode(packet);
+
+            // 缓存已发送的包
+            sentPackets[nextSequence] = data;
+
+            await udp.SendAsync(data, data.Length, target);
+
+            Console.WriteLine($"window send DATA seq={nextSequence}");
+            nextSequence++;
+        }
+
+        // 等ACK或超时
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+
+            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
+            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
+
+            if(ack.Flags != PacketFlags.Ack)
+            {
+                Console.WriteLine($"window received non-ACK: {ack.Flags}");
+                continue;
+            }
+
+            Console.WriteLine($"Window received ACK seq={ack.Sequence}");
+
+            // 移动窗口左侧，已确认交付指针
+            if(ack.Sequence >= baseSequence)
+            {
+                uint oldBase = baseSequence;
+                baseSequence = ack.Sequence + 1;
+                
+                for(uint seq = oldBase; seq < baseSequence; seq++)
+                {
+                    sentPackets.Remove(seq);
+                }
+            }
+        }
+        catch(OperationCanceledException)
+        {
+            Console.WriteLine($"Window timeout, resend from seq={baseSequence}");
+            
+            foreach(var item in sentPackets.OrderBy(x => x.Key))
+            {
+                await udp.SendAsync(item.Value, item.Value.Length, target);
+                Console.WriteLine($"Window resend DATA seq={item.Key}");
+            }
+        }
     }
 }
 
