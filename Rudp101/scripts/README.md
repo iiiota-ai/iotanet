@@ -11,6 +11,8 @@ dotnet new console -n Rudp101
 dotnet run
 dotnet run -- receiver
 dotnet run -- sender
+dotnet run --no-build -- receiver
+dotnet run --no-build -- sender
 ```
 
 ```sh

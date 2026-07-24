@@ -1,6 +1,8 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 
 const int timeoutMs = 500;
 const int maxRetries = 5;
@@ -23,6 +25,10 @@ else if(args[0] == "testcodec")
 {
     var bytes = TestEncode();
     TestDecode(bytes);
+}
+else if(args[0] == "testordersender")
+{
+    await TestOrderSender();
 }
 
 static async Task RunReceiver()
@@ -86,55 +92,21 @@ static async Task RunSender()
 {
     // 创建 UdpClient
     using var udp = new UdpClient();
+    var target = new IPEndPoint(IPAddress.Loopback, 9000);
 
     // 把 "hello udp" 转成 bytes
-    // byte[] data = Encoding.UTF8.GetBytes("hello udp");
     var packet = new RudpPacket
     {
         Flags = PacketFlags.Data,
         Sequence = 1,
         Payload = Encoding.UTF8.GetBytes("hello rudp")
     };
-    byte[] data = RudpPacketCodec.Encode(packet);
-    var target = new IPEndPoint(IPAddress.Loopback, 9000);
 
-    for(int attempt = 1; attempt <= maxRetries; attempt++)
+    bool ok = await SendWithRetry(udp, target, packet);
+    if (!ok)
     {
-        // SendAsync 到 127.0.0.1:9000
-        await udp.SendAsync(data, data.Length, target);
-        Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
-        
-        try
-        {
-            using var timeoutCts = new CancellationTokenSource(timeoutMs);
-            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
-            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
-
-            if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
-            {
-                Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
-                return;
-            }
-
-            Console.WriteLine($"Received unexpected packet: {ack.Flags} seq={ack.Sequence}");
-        }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine($"Timeout waiting ACK seq={packet.Sequence}");
-        }
-        catch (SocketException ex) when (
-            ex.SocketErrorCode == SocketError.ConnectionReset ||
-            ex.SocketErrorCode == SocketError.ConnectionRefused)
-        {
-            Console.WriteLine($"No ACK endpoint available for seq={packet.Sequence}: {ex.SocketErrorCode}");
-        }
-        catch (ArgumentException ex)
-        {
-            Console.WriteLine($"Drop invalid packet while waiting ACK: {ex.Message}");
-        }
+        Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
     }
-
-    Console.WriteLine($"Failed to receive ACK seq={packet.Sequence} after {maxRetries} attempts");
 }
 
 static byte[] TestEncode()
@@ -155,4 +127,71 @@ static void TestDecode(byte[] bytes)
 {
     RudpPacket decoded = RudpPacketCodec.Decode(bytes);
     Console.WriteLine($"TestDecode Flags:{decoded.Flags} Sequence:{decoded.Sequence} Payload:{Encoding.UTF8.GetString(decoded.Payload)}");
+}
+
+static async Task TestOrderSender()
+{
+    using var udp = new UdpClient();
+    var target = new IPEndPoint(IPAddress.Loopback, 9000);
+
+    for(uint seq = 1; seq <= 3; seq++)
+    {
+        var packet = new RudpPacket
+        {
+            Flags = PacketFlags.Data,
+            Sequence = seq,
+            Payload = Encoding.UTF8.GetBytes($"message {seq}")
+        };
+
+        bool ok = await SendWithRetry(udp, target, packet);
+        if (!ok)
+        {
+            Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
+            return;
+        }
+    }
+}
+
+static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPacket packet)
+{
+    byte[] data = RudpPacketCodec.Encode(packet);
+
+    for(int attempt = 0; attempt < maxRetries; attempt++)
+    {
+        await udp.SendAsync(data, data.Length, target);
+        Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
+
+        try
+        {
+            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+
+            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
+            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
+
+            if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
+            {
+                Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
+                return true;
+            }
+
+            Console.WriteLine($"Received unexpected packet: {ack.Flags} seq={ack.Sequence}");
+        }
+        catch(OperationCanceledException)
+        {
+            Console.WriteLine($"Timeout waiting ACK seq={packet.Sequence}");
+        }
+        catch(SocketException ex) when (
+            ex.SocketErrorCode == SocketError.ConnectionReset ||
+            ex.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            Console.WriteLine($"No ACK endpoint available for seq={packet.Sequence}: {ex.SocketErrorCode}");
+        }
+        catch(ArgumentException ex)
+        {
+            Console.WriteLine($"Drop invalid packet while waiting ACK: {ex.Message}");
+        }
+    }
+
+    Console.WriteLine($"Failed to receive ACK seq={packet.Sequence} after {maxRetries} attempts");
+    return false;
 }
