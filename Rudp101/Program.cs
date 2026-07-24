@@ -163,6 +163,16 @@ static async Task<RudpPacket?> ReceiveAck(UdpClient udp, int timeoutMs)
     return packet;
 }
 
+static byte[] CreatePayload(string text)
+{
+    return Encoding.UTF8.GetBytes(text);
+}
+
+static RudpPacket CreateDataPacket(uint sequence, string text)
+{
+    return RudpPacket.Data(sequence, CreatePayload(text));
+}
+
 static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
 {    
     // 创建 UdpClient，并绑定一个系统分配的本地临时端口。
@@ -179,8 +189,7 @@ static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions option
             newSeq = seq == 2 ? 3u : 2u;
         }
         
-        var payload = Encoding.UTF8.GetBytes($"message {newSeq}");
-        var packet = RudpPacket.Data(newSeq, payload);
+        var packet = CreateDataPacket(newSeq, $"message {newSeq}");
         
         // 模拟丢弃第一个DATA包
         var shouldDropFirstData = dropFirstData && !firstDataDropped;
@@ -206,8 +215,7 @@ static async Task FireOrderSender()
     uint[] order = [1, 3, 2];
     foreach(uint seq in order)
     {
-        var payload = Encoding.UTF8.GetBytes($"message {seq}");
-        var packet = RudpPacket.Data(seq, payload);
+        var packet = CreateDataPacket(seq, $"message {seq}");
 
         await SendData(udp, target, packet);
         await Task.Delay(100);
@@ -234,10 +242,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         while(window.CanSend)
         {
             var sequence = window.NextSequence;
-
-            var payload = Encoding.UTF8.GetBytes($"message {sequence}");
-            var packet = RudpPacket.Data(sequence, payload);
-
+            var packet = CreateDataPacket(sequence, $"message {sequence}");
             byte[] data = RudpPacketCodec.Encode(packet);
 
             window.MarkSent(packet.Sequence, data);
@@ -305,8 +310,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
 static byte[] TestEncode()
 {
-    var payload = Encoding.UTF8.GetBytes("你好，rudp");
-    var packet = RudpPacket.Data(1, payload);
+    var packet = CreateDataPacket(1, "你好，rudp");
 
     Console.WriteLine($"TestEncode Flags:{packet.Flags} Sequence:{packet.Sequence} Payload:{Encoding.UTF8.GetString(packet.Payload)}");
 
