@@ -2,61 +2,76 @@
 using System.Net.Sockets;
 using System.Text;
 
-var options = new RudpOptions();
-
-if(args.Length == 0)
+static DemoCommand ParseCommand(string[] args)
 {
-    Console.WriteLine($"usage: dotnet run -- receiver|sender");
+    if (args.Length == 0)
+    {
+        return new DemoCommand();
+    }
+
+    string mode = args[0];
+    string? option = args.Length > 1 ? args[1] : null;
+
+    uint? dropWindowSequence = null;
+
+    if (args.Length > 2 && args[2].StartsWith("dropseq"))
+    {
+        string seqText = args[2]["dropseq".Length..];
+
+        if (uint.TryParse(seqText, out uint seq))
+        {
+            dropWindowSequence = seq;
+        }
+    }
+
+    return new DemoCommand
+    {
+        Mode = mode,
+        DropFirstAck = mode == "receiver" && option == "dropack",
+        DropFirstData = mode == "sender" && option == "dropfirstdata",
+        Reorder = mode == "sender" && option == "reorder",
+        FireOrder = mode == "sender" && option == "fireorder",
+        Window = mode == "sender" && option == "window",
+        DropWindowSequence = dropWindowSequence,
+        TestCodec = mode == "testcodec"
+    };
+}
+
+var options = new RudpOptions();
+var command = ParseCommand(args);
+
+if (string.IsNullOrEmpty(command.Mode))
+{
+    Console.WriteLine("usage: dotnet run -- receiver|sender");
     return;
 }
 
-if(args[0] == "receiver")
+if(command.Mode == "receiver")
 {
     // 是否模拟丢弃ACK包
-    bool dropFirstAck = args.Length > 1 && args[1] == "dropack";
-    await RunReceiver(dropFirstAck);
+    await RunReceiver(command.DropFirstAck);
 }
-else if(args[0] == "sender")
+else if(command.Mode == "sender")
 {
-    // 是否模拟丢弃DATA包
-    bool dropFirstData = args.Length > 1 && args[1] == "dropfirstdata";
-    // 是否模拟乱序发送
-    bool reorder = args.Length > 1 && args[1] == "reorder";
-    // 是否使用不等待立即的发送方式
-    bool fireOrder = args.Length > 1 && args[1] == "fireorder";
-    // 是否使用滑动窗口发送
-    bool window = args.Length > 1 && args[1] == "window";
-
-    if (window)
+    if (command.Window)
     {
-        // 模拟是否首次丢弃第二个包
-        uint? dropWindowSequence = null;
-        if(args.Length > 2 && args[2].StartsWith("dropseq"))
-        {
-            string seqText = args[2]["dropseq".Length..];
-            if(uint.TryParse(seqText, out uint seq))
-            {
-                dropWindowSequence = seq;
-            }
-        }
-
-        var result = await WindowSender(dropWindowSequence, options);
+        var result = await WindowSender(command.DropWindowSequence, options);
         Console.WriteLine(result.Message);
         if (!result.Success)
         {
             Console.WriteLine($"Window sender failed.");
         }
     }
-    else if (fireOrder)
+    else if (command.FireOrder)
     {
         await FireOrderSender();
     }
     else
     {
-        await RunSender(dropFirstData, reorder, options);
+        await RunSender(command.DropFirstData, command.Reorder, options);
     }
 }
-else if(args[0] == "testcodec")
+else if(command.DropFirstData)
 {
     var bytes = TestEncode();
     TestDecode(bytes);
