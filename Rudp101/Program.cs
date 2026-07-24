@@ -40,8 +40,9 @@ else if(args[0] == "sender")
             }
         }
 
-        var ok = await WindowSender(dropWindowSequence, options);
-        if (!ok)
+        var result = await WindowSender(dropWindowSequence, options);
+        Console.WriteLine(result.Message);
+        if (!result.Success)
         {
             Console.WriteLine($"Window sender failed.");
         }
@@ -215,7 +216,7 @@ static async Task FireOrderSender()
     }
 }
 
-static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions options)
+static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, RudpOptions options)
 {
     using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
@@ -295,8 +296,7 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
 
             if(consecutiveTimeouts >= options.MaxRetries)
             {
-                Console.WriteLine($"Window failed after {options.MaxRetries} consecutive timeouts");
-                return false;
+                return RudpSendResult.Fail($"Window failed after {options.MaxRetries} consecutive timeouts");
             }
 
             Console.WriteLine($"Window timeout, resend from seq={window.BaseSequence}");
@@ -311,9 +311,8 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
         }
     }
     
-    Console.WriteLine($"Window sender completed.");
     await Task.Delay(500);
-    return true;
+    return RudpSendResult.Ok("Window sender completed.");
 }
 
 static byte[] TestEncode()
