@@ -149,8 +149,13 @@ static async Task RunReceiver(bool dropFirstAck)
 static async Task SendData(UdpClient udp, IPEndPoint target, RudpPacket packet)
 {
     byte[] data = RudpPacketCodec.Encode(packet);
+    await SendEncodedData(udp, target, packet.Sequence, data, "Sent");
+}
+
+static async Task SendEncodedData(UdpClient udp, IPEndPoint target, uint sequence, byte[] data, string prefix)
+{
     await udp.SendAsync(data, data.Length, target);
-    Console.WriteLine($"Sent DATA seq={packet.Sequence}");
+    Console.WriteLine($"{prefix} DATA seq={sequence}");
 }
 
 static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequence)
@@ -160,6 +165,22 @@ static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequ
 
     await udp.SendAsync(ackBytes, ackBytes.Length, remoteEndPoint);
     Console.WriteLine($"Sent ACK seq={ack.Sequence} to {remoteEndPoint}");
+}
+
+static async Task<RudpPacket> ReceiveAck(UdpClient udp, int timeoutMs)
+{
+    using var timeoutCts = new CancellationTokenSource(timeoutMs);
+
+    UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
+    RudpPacket packet = RudpPacketCodec.Decode(result.Buffer);
+
+    if(packet.Flags != PacketFlags.Ack)
+    {
+        Console.WriteLine($"window received non-ACK: {packet.Flags}");
+        return null;
+    }
+
+    return packet;
 }
 
 static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
@@ -257,27 +278,23 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         // 等ACK或超时
         try
         {
-            using var timeoutCts = new CancellationTokenSource(options.TimeoutMs);
-
-            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
-            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
-
-            if(ack.Flags != PacketFlags.Ack)
+            RudpPacket? packet = await ReceiveAck(udp, options.TimeoutMs);
+            
+            if(packet is null)
             {
-                Console.WriteLine($"window received non-ACK: {ack.Flags}");
                 continue;
             }
 
-            Console.WriteLine($"Window received ACK seq={ack.Sequence}");
+            Console.WriteLine($"Window received ACK seq={packet.Sequence}");
 
-            if (window.TryAck(ack.Sequence))
+            if (window.TryAck(packet.Sequence))
             {
                 // 窗口移动则重置
                 consecutiveTimeouts = 0;
             }
             else
             {
-                Console.WriteLine($"Window duplicate ACK seq={ack.Sequence}, base={window.BaseSequence}");
+                Console.WriteLine($"Window duplicate ACK seq={packet.Sequence}, base={window.BaseSequence}");
                 continue;
             }
         }
@@ -297,8 +314,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             
             foreach(var item in retryPackets)
             {
-                await udp.SendAsync(item.Value, item.Value.Length, target);
-                Console.WriteLine($"Window resend DATA seq={item.Key}");
+                await SendEncodedData(udp, target, item.Key, item.Value, "Window resend");
             }
         }
     }
@@ -340,8 +356,7 @@ static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPack
         }
         else
         {
-            await udp.SendAsync(data, data.Length, target);
-            Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
+            await SendEncodedData(udp, target, packet.Sequence, data, $"Sent attempt={attempt}");
         }
 
         try
