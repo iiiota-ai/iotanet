@@ -79,8 +79,19 @@ static async Task RunReceiver(bool dropFirstAck)
     // 循环ReceiveAsync
     while (true)
     {
-        UdpReceiveResult result = await udp.ReceiveAsync();
-        // string text= Encoding.UTF8.GetString(result.Buffer);
+        UdpReceiveResult result;
+
+        try
+        {
+            result = await udp.ReceiveAsync();
+        }
+        catch (SocketException ex) when (
+            ex.SocketErrorCode == SocketError.ConnectionReset ||
+            ex.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            Console.WriteLine($"Receive failed: {ex.SocketErrorCode}");
+            continue;
+        }
 
         try
         {
@@ -143,10 +154,16 @@ static async Task RunReceiver(bool dropFirstAck)
             await udp.SendAsync(ackBytes, ackBytes.Length, result.RemoteEndPoint);
             Console.WriteLine($"Sent ACK seq={ack.Sequence} to {result.RemoteEndPoint}");
         }
+        catch(SocketException ex) when(
+            ex.SocketErrorCode == SocketError.ConnectionReset ||
+            ex.SocketErrorCode == SocketError.ConnectionRefused)
+        {
+            Console.WriteLine($"Failed to send ACK to {result.RemoteEndPoint}: {ex.SocketErrorCode}");
+        }
         catch(ArgumentException ex)
         {
             Console.WriteLine($"Drop invalid packet from {result.RemoteEndPoint}: {ex.Message}");
-        }        
+        }
     }    
 }
 
@@ -235,6 +252,9 @@ static async Task WindowSender(uint? dropFirstSendOfSequence)
     // 模拟丢包是否已发生一次
     bool windowDropConsumed = false;
 
+    // 连续超时计数器
+    int consecutiveTimeouts = 0;
+
     // 还有未读消息
     while(baseSequence <= totalMessages)
     {
@@ -293,6 +313,8 @@ static async Task WindowSender(uint? dropFirstSendOfSequence)
             // 移动窗口左侧，已确认交付指针
             uint oldBase = baseSequence;
             baseSequence = ack.Sequence + 1;
+            // 窗口移动则重置
+            consecutiveTimeouts = 0;
             
             for(uint seq = oldBase; seq < baseSequence; seq++)
             {
@@ -301,6 +323,15 @@ static async Task WindowSender(uint? dropFirstSendOfSequence)
         }
         catch(OperationCanceledException)
         {
+            // 超时则累加
+            consecutiveTimeouts++;
+
+            if(consecutiveTimeouts >= maxRetries)
+            {
+                Console.WriteLine($"Window fail after {maxRetries} consecutive timeouts");
+                return;
+            }
+
             Console.WriteLine($"Window timeout, resend from seq={baseSequence}");
             
             foreach(var item in sentPackets.OrderBy(x => x.Key))
