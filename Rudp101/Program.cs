@@ -23,7 +23,16 @@ else if(args[0] == "sender")
     bool dropFirstData = args.Length > 1 && args[1] == "dropfirstdata";
     // 是否模拟乱序发送
     bool reorder = args.Length > 1 && args[1] == "reorder";
-    await RunSender(dropFirstData, reorder);
+    // 是否使用不等待立即的发送方式
+    bool fireOrder = args.Length > 1 && args[1] == "fireorder";
+    if (fireOrder)
+    {
+        await FireOrderSender();
+    }
+    else
+    {
+        await RunSender(dropFirstData, reorder);
+    }
 }
 else if(args[0] == "testcodec")
 {
@@ -158,6 +167,31 @@ static async Task RunSender(bool dropFirstData, bool reorder)
             Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
             return;
         }
+    }
+}
+
+static async Task FireOrderSender()
+{
+    using var udp = new UdpClient(0);
+    var target = new IPEndPoint(IPAddress.Loopback, 9000);
+
+    uint[] order = [1, 3, 2];
+    foreach(uint seq in order)
+    {
+        var packet = new RudpPacket
+        {
+            Flags = PacketFlags.Data,
+            Sequence = seq,
+            Payload = Encoding.UTF8.GetBytes($"message {seq}")
+        };
+
+        byte[] data = RudpPacketCodec.Encode(packet);
+        
+        await udp.SendAsync(data, data.Length, target);
+
+        Console.WriteLine($"Fire DATA seq={seq}");
+
+        await Task.Delay(100);
     }
 }
 
