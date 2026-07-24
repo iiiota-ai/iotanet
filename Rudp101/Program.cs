@@ -240,11 +240,6 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
     
     // 窗口范围：[baseSequence, baseSequence + windowSize)
 
-    // 总消息数量
-    const int totalMessages = 6;
-    // 固定窗口大小
-    const int windowSize = 3;
-
     // 当前窗口做左边，最早未确认交付的包
     uint baseSequence = 1;
     // 下一个可发送的包
@@ -260,10 +255,10 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions 
     int consecutiveTimeouts = 0;
 
     // 还有未读消息
-    while(baseSequence <= totalMessages)
+    while(baseSequence <= options.TotalMessages)
     {
         // 尽量填满窗口
-        while(nextSequence <= totalMessages && nextSequence < baseSequence + windowSize)
+        while(nextSequence <= options.TotalMessages && nextSequence < baseSequence + options.WindowSize)
         {
             var packet = new RudpPacket
             {
