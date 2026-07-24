@@ -2,43 +2,8 @@
 using System.Net.Sockets;
 using System.Text;
 
-static DemoCommand ParseCommand(string[] args)
-{
-    if (args.Length == 0)
-    {
-        return new DemoCommand();
-    }
-
-    string mode = args[0];
-    string? option = args.Length > 1 ? args[1] : null;
-
-    uint? dropWindowSequence = null;
-
-    if (args.Length > 2 && args[2].StartsWith("dropseq"))
-    {
-        string seqText = args[2]["dropseq".Length..];
-
-        if (uint.TryParse(seqText, out uint seq))
-        {
-            dropWindowSequence = seq;
-        }
-    }
-
-    return new DemoCommand
-    {
-        Mode = mode,
-        DropFirstAck = mode == "receiver" && option == "dropack",
-        DropFirstData = mode == "sender" && option == "dropfirstdata",
-        Reorder = mode == "sender" && option == "reorder",
-        FireOrder = mode == "sender" && option == "fireorder",
-        Window = mode == "sender" && option == "window",
-        DropWindowSequence = dropWindowSequence,
-        TestCodec = mode == "testcodec"
-    };
-}
-
 var options = new RudpOptions();
-var command = ParseCommand(args);
+var command = DemoCommand.Parse(args);
 
 if (string.IsNullOrEmpty(command.Mode))
 {
@@ -71,7 +36,7 @@ else if(command.Mode == "sender")
         await RunSender(command.DropFirstData, command.Reorder, options);
     }
 }
-else if(command.DropFirstData)
+else if(command.TestCodec)
 {
     var bytes = TestEncode();
     TestDecode(bytes);
