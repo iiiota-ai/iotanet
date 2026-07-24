@@ -2,8 +2,7 @@
 using System.Net.Sockets;
 using System.Text;
 
-const int timeoutMs = 500;
-const int maxRetries = 5;
+var options = new RudpOptions();
 
 if(args.Length == 0)
 {
@@ -41,7 +40,7 @@ else if(args[0] == "sender")
             }
         }
 
-        var ok = await WindowSender(dropWindowSequence);
+        var ok = await WindowSender(dropWindowSequence, options);
         if (!ok)
         {
             Console.WriteLine($"Window sender failed.");
@@ -53,7 +52,7 @@ else if(args[0] == "sender")
     }
     else
     {
-        await RunSender(dropFirstData, reorder);
+        await RunSender(dropFirstData, reorder, options);
     }
 }
 else if(args[0] == "testcodec")
@@ -172,7 +171,7 @@ static async Task RunReceiver(bool dropFirstAck)
     }    
 }
 
-static async Task RunSender(bool dropFirstData, bool reorder)
+static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
 {    
     // 创建 UdpClient，并绑定一个系统分配的本地临时端口。
     using var udp = new UdpClient(0);
@@ -200,7 +199,7 @@ static async Task RunSender(bool dropFirstData, bool reorder)
             firstDataDropped = true;
         }
 
-        bool ok = await SendWithRetry(udp, target, packet, shouldDropFirstData);
+        bool ok = await SendWithRetry(udp, target, packet, shouldDropFirstData, options);
         if (!ok)
         {
             Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
@@ -234,7 +233,7 @@ static async Task FireOrderSender()
     }
 }
 
-static async Task<bool> WindowSender(uint? dropFirstSendOfSequence)
+static async Task<bool> WindowSender(uint? dropFirstSendOfSequence, RudpOptions options)
 {
     using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
@@ -296,7 +295,7 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence)
         // 等ACK或超时
         try
         {
-            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+            using var timeoutCts = new CancellationTokenSource(options.TimeoutMs);
 
             UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
             RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
@@ -331,9 +330,9 @@ static async Task<bool> WindowSender(uint? dropFirstSendOfSequence)
             // 超时则累加
             consecutiveTimeouts++;
 
-            if(consecutiveTimeouts >= maxRetries)
+            if(consecutiveTimeouts >= options.MaxRetries)
             {
-                Console.WriteLine($"Window failed after {maxRetries} consecutive timeouts");
+                Console.WriteLine($"Window failed after {options.MaxRetries} consecutive timeouts");
                 return false;
             }
 
@@ -372,13 +371,13 @@ static void TestDecode(byte[] bytes)
     Console.WriteLine($"TestDecode Flags:{decoded.Flags} Sequence:{decoded.Sequence} Payload:{Encoding.UTF8.GetString(decoded.Payload)}");
 }
 
-static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPacket packet, bool dropFirstData)
+static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPacket packet, bool dropFirstData, RudpOptions options)
 {
     byte[] data = RudpPacketCodec.Encode(packet);
     // 模拟丢弃DATA包
     bool dropDataDropped = false;
 
-    for(int attempt = 1; attempt <= maxRetries; attempt++)
+    for(int attempt = 1; attempt <= options.MaxRetries; attempt++)
     {
 
         if(dropFirstData && !dropDataDropped)
@@ -394,7 +393,7 @@ static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPack
 
         try
         {
-            using var timeoutCts = new CancellationTokenSource(timeoutMs);
+            using var timeoutCts = new CancellationTokenSource(options.TimeoutMs);
 
             UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
             RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
@@ -423,6 +422,6 @@ static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPack
         }
     }
 
-    Console.WriteLine($"Failed to receive ACK seq={packet.Sequence} after {maxRetries} attempts");
+    Console.WriteLine($"Failed to receive ACK seq={packet.Sequence} after {options.MaxRetries} attempts");
     return false;
 }
