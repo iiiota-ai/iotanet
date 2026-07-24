@@ -40,7 +40,12 @@ else if(args[0] == "sender")
                 dropWindowSequence = seq;
             }
         }
-        await WindowSender(dropWindowSequence);
+
+        var ok = await WindowSender(dropWindowSequence);
+        if (!ok)
+        {
+            Console.WriteLine($"Window sender failed.");
+        }
     }
     else if (fireOrder)
     {
@@ -229,7 +234,7 @@ static async Task FireOrderSender()
     }
 }
 
-static async Task WindowSender(uint? dropFirstSendOfSequence)
+static async Task<bool> WindowSender(uint? dropFirstSendOfSequence)
 {
     using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
@@ -328,8 +333,8 @@ static async Task WindowSender(uint? dropFirstSendOfSequence)
 
             if(consecutiveTimeouts >= maxRetries)
             {
-                Console.WriteLine($"Window fail after {maxRetries} consecutive timeouts");
-                return;
+                Console.WriteLine($"Window failed after {maxRetries} consecutive timeouts");
+                return false;
             }
 
             Console.WriteLine($"Window timeout, resend from seq={baseSequence}");
@@ -341,6 +346,10 @@ static async Task WindowSender(uint? dropFirstSendOfSequence)
             }
         }
     }
+    
+    Console.WriteLine($"Window sender completed.");
+    await Task.Delay(500);
+    return true;
 }
 
 static byte[] TestEncode()
