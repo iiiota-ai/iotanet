@@ -15,22 +15,20 @@ if(args.Length == 0)
 
 if(args[0] == "receiver")
 {
-    // 是否丢弃首包
+    // 是否丢弃ACK包
     bool dropFirstAck = args.Length > 1 && args[1] == "dropack";
     await RunReceiver(dropFirstAck);
 }
 else if(args[0] == "sender")
 {
-    await RunSender();
+    // 是否丢弃DATA包
+    bool dropFirstData = args.Length > 1 && args[1] == "dropfirstdata";
+    await RunSender(dropFirstData);
 }
 else if(args[0] == "testcodec")
 {
     var bytes = TestEncode();
     TestDecode(bytes);
-}
-else if(args[0] == "testordersender")
-{
-    await TestOrderSender();
 }
 
 static async Task RunReceiver(bool dropFirstAck)
@@ -41,7 +39,9 @@ static async Task RunReceiver(bool dropFirstAck)
 
     // 期望接收的包序号
     uint expectedSequence = 1;
+    // 模拟丢弃ACK包
     bool firstAckDropped = false;
+
     // 循环ReceiveAsync
     while (true)
     {
@@ -99,24 +99,35 @@ static async Task RunReceiver(bool dropFirstAck)
     }    
 }
 
-static async Task RunSender()
-{
-    // 创建 UdpClient
-    using var udp = new UdpClient();
+static async Task RunSender(bool dropFirstData)
+{    
+    // 创建 UdpClient，并绑定一个系统分配的本地临时端口。
+    using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
 
-    // 把 "hello udp" 转成 bytes
-    var packet = new RudpPacket
-    {
-        Flags = PacketFlags.Data,
-        Sequence = 1,
-        Payload = Encoding.UTF8.GetBytes("hello rudp")
-    };
+    bool firstDataDropped = false;
 
-    bool ok = await SendWithRetry(udp, target, packet);
-    if (!ok)
+    for(uint seq = 1; seq <= 3; seq++)
     {
-        Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
+        var packet = new RudpPacket
+        {
+            Flags = PacketFlags.Data,
+            Sequence = seq,
+            Payload = Encoding.UTF8.GetBytes($"message {seq}")
+        };
+        // 模拟丢弃第一个DATA包
+        var shouldDropFirstData = dropFirstData && !firstDataDropped;
+        if (dropFirstData)
+        {
+            firstDataDropped = true;
+        }
+
+        bool ok = await SendWithRetry(udp, target, packet, shouldDropFirstData);
+        if (!ok)
+        {
+            Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
+            return;
+        }
     }
 }
 
@@ -140,37 +151,25 @@ static void TestDecode(byte[] bytes)
     Console.WriteLine($"TestDecode Flags:{decoded.Flags} Sequence:{decoded.Sequence} Payload:{Encoding.UTF8.GetString(decoded.Payload)}");
 }
 
-static async Task TestOrderSender()
-{
-    using var udp = new UdpClient();
-    var target = new IPEndPoint(IPAddress.Loopback, 9000);
-
-    for(uint seq = 1; seq <= 3; seq++)
-    {
-        var packet = new RudpPacket
-        {
-            Flags = PacketFlags.Data,
-            Sequence = seq,
-            Payload = Encoding.UTF8.GetBytes($"message {seq}")
-        };
-
-        bool ok = await SendWithRetry(udp, target, packet);
-        if (!ok)
-        {
-            Console.WriteLine($"Stop sending because seq={packet.Sequence} failed");
-            return;
-        }
-    }
-}
-
-static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPacket packet)
+static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPacket packet, bool dropFirstData)
 {
     byte[] data = RudpPacketCodec.Encode(packet);
+    // 模拟丢弃DATA包
+    bool dropDataDropped = false;
 
     for(int attempt = 1; attempt <= maxRetries; attempt++)
     {
-        await udp.SendAsync(data, data.Length, target);
-        Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
+
+        if(dropFirstData && !dropDataDropped)
+        {
+            Console.WriteLine($"Simulate lost DATA seq={packet.Sequence}, attempt={attempt}");
+            dropDataDropped = true;
+        }
+        else
+        {
+            await udp.SendAsync(data, data.Length, target);
+            Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
+        }
 
         try
         {
