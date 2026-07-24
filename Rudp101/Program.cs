@@ -131,13 +131,9 @@ static async Task RunReceiver(bool dropFirstAck)
             }
 
             // Ack确认包
-            var ack = new RudpPacket
-            {
-                Flags = PacketFlags.Ack,
-                Sequence = ackSequence,
-                Payload = Array.Empty<Byte>()
-            };
+            var ack = RudpPacket.Ack(ackSequence);
             byte[] ackBytes = RudpPacketCodec.Encode(ack);
+
             await udp.SendAsync(ackBytes, ackBytes.Length, result.RemoteEndPoint);
             Console.WriteLine($"Sent ACK seq={ack.Sequence} to {result.RemoteEndPoint}");
         }
@@ -169,12 +165,10 @@ static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions option
         {
             newSeq = seq == 2 ? 3u : 2u;
         }
-        var packet = new RudpPacket
-        {
-            Flags = PacketFlags.Data,
-            Sequence = newSeq,
-            Payload = Encoding.UTF8.GetBytes($"message {newSeq}")
-        };
+        
+        var payload = Encoding.UTF8.GetBytes($"message {newSeq}");
+        var packet = RudpPacket.Data(newSeq, payload);
+        
         // 模拟丢弃第一个DATA包
         var shouldDropFirstData = dropFirstData && !firstDataDropped;
         if (shouldDropFirstData)
@@ -199,12 +193,8 @@ static async Task FireOrderSender()
     uint[] order = [1, 3, 2];
     foreach(uint seq in order)
     {
-        var packet = new RudpPacket
-        {
-            Flags = PacketFlags.Data,
-            Sequence = seq,
-            Payload = Encoding.UTF8.GetBytes($"message {seq}")
-        };
+        var payload = Encoding.UTF8.GetBytes($"message {seq}");
+        var packet = RudpPacket.Data(seq, payload);
 
         byte[] data = RudpPacketCodec.Encode(packet);
 
@@ -237,12 +227,8 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         {
             var sequence = window.NextSequence;
 
-            var packet = new RudpPacket
-            {
-                Flags = PacketFlags.Data,
-                Sequence = sequence,
-                Payload = Encoding.UTF8.GetBytes($"message {sequence}")
-            };
+            var payload = Encoding.UTF8.GetBytes($"message {sequence}");
+            var packet = RudpPacket.Data(sequence, payload);
 
             byte[] data = RudpPacketCodec.Encode(packet);
 
@@ -310,19 +296,16 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             }
         }
     }
-    
+
     await Task.Delay(500);
     return RudpSendResult.Ok("Window sender completed.");
 }
 
 static byte[] TestEncode()
 {
-    var packet = new RudpPacket
-    {
-        Flags = PacketFlags.Data,
-        Sequence = 1,
-        Payload = Encoding.UTF8.GetBytes("你好，rudp")
-    };
+    var payload = Encoding.UTF8.GetBytes("你好，rudp");
+    var packet = RudpPacket.Data(1, payload);
+
     Console.WriteLine($"TestEncode Flags:{packet.Flags} Sequence:{packet.Sequence} Payload:{Encoding.UTF8.GetString(packet.Payload)}");
 
     byte[] bytes = RudpPacketCodec.Encode(packet);

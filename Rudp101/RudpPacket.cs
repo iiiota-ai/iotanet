@@ -67,4 +67,8 @@ public sealed class RudpPacket
     /// 载荷
     /// </summary>
     public required byte[] Payload { get; init; }
+
+    public static RudpPacket Data(uint sequence, byte[] payload) => new() { Flags = PacketFlags.Data, Sequence = sequence, Payload = payload };
+
+    public static RudpPacket Ack(uint seqence) => new() { Flags = PacketFlags.Ack, Sequence = seqence, Payload = Array.Empty<Byte>() };
 }
