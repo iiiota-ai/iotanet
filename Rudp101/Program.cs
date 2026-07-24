@@ -30,7 +30,17 @@ else if(args[0] == "sender")
 
     if (window)
     {
-        await WindowSender();
+        // 模拟是否首次丢弃第二个包
+        uint? dropWindowSequence = null;
+        if(args.Length > 2 && args[2].StartsWith("dropseq"))
+        {
+            string seqText = args[2]["dropseq".Length..];
+            if(uint.TryParse(seqText, out uint seq))
+            {
+                dropWindowSequence = seq;
+            }
+        }
+        await WindowSender(dropWindowSequence);
     }
     else if (fireOrder)
     {
@@ -202,7 +212,7 @@ static async Task FireOrderSender()
     }
 }
 
-static async Task WindowSender()
+static async Task WindowSender(uint? dropFirstSendOfSequence)
 {
     using var udp = new UdpClient(0);
     var target = new IPEndPoint(IPAddress.Loopback, 9000);
@@ -222,6 +232,9 @@ static async Task WindowSender()
     // 缓存已发送但可能需要重传的包
     var sentPackets = new Dictionary<uint, byte[]>();
 
+    // 模拟丢包是否已发生一次
+    bool windowDropConsumed = false;
+
     // 还有未读消息
     while(baseSequence <= totalMessages)
     {
@@ -240,9 +253,18 @@ static async Task WindowSender()
             // 缓存已发送的包
             sentPackets[nextSequence] = data;
 
-            await udp.SendAsync(data, data.Length, target);
-
-            Console.WriteLine($"window send DATA seq={nextSequence}");
+            // 模拟丢包
+            bool shouldDrop = dropFirstSendOfSequence.HasValue && !windowDropConsumed && nextSequence == dropFirstSendOfSequence.Value;
+            if(shouldDrop)
+            {
+                windowDropConsumed = true;
+                Console.WriteLine($"Window simulate lost DATA seq={nextSequence}");
+            }
+            else
+            {
+                await udp.SendAsync(data, data.Length, target);
+                Console.WriteLine($"window send DATA seq={nextSequence}");
+            }
             nextSequence++;
         }
 
@@ -262,16 +284,19 @@ static async Task WindowSender()
 
             Console.WriteLine($"Window received ACK seq={ack.Sequence}");
 
-            // 移动窗口左侧，已确认交付指针
-            if(ack.Sequence >= baseSequence)
+            if(ack.Sequence < baseSequence)
             {
-                uint oldBase = baseSequence;
-                baseSequence = ack.Sequence + 1;
-                
-                for(uint seq = oldBase; seq < baseSequence; seq++)
-                {
-                    sentPackets.Remove(seq);
-                }
+                Console.WriteLine($"Window duplicate ACK seq={ack.Sequence}, base={baseSequence}");
+                continue;
+            }
+
+            // 移动窗口左侧，已确认交付指针
+            uint oldBase = baseSequence;
+            baseSequence = ack.Sequence + 1;
+            
+            for(uint seq = oldBase; seq < baseSequence; seq++)
+            {
+                sentPackets.Remove(seq);
             }
         }
         catch(OperationCanceledException)
