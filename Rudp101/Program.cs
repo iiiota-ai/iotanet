@@ -130,12 +130,8 @@ static async Task RunReceiver(bool dropFirstAck)
                 continue;
             }
 
-            // Ack确认包
-            var ack = RudpPacket.Ack(ackSequence);
-            byte[] ackBytes = RudpPacketCodec.Encode(ack);
-
-            await udp.SendAsync(ackBytes, ackBytes.Length, result.RemoteEndPoint);
-            Console.WriteLine($"Sent ACK seq={ack.Sequence} to {result.RemoteEndPoint}");
+            // Ack确认
+            await SendAck(udp, result.RemoteEndPoint, ackSequence);
         }
         catch(SocketException ex) when(
             ex.SocketErrorCode == SocketError.ConnectionReset ||
@@ -148,6 +144,22 @@ static async Task RunReceiver(bool dropFirstAck)
             Console.WriteLine($"Drop invalid packet from {result.RemoteEndPoint}: {ex.Message}");
         }
     }
+}
+
+static async Task SendData(UdpClient udp, IPEndPoint target, RudpPacket packet)
+{
+    byte[] data = RudpPacketCodec.Encode(packet);
+    await udp.SendAsync(data, data.Length, target);
+    Console.WriteLine($"Sent DATA seq={packet.Sequence}");
+}
+
+static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequence)
+{
+    var ack = RudpPacket.Ack(ackSequence);
+    byte[] ackBytes = RudpPacketCodec.Encode(ack);
+
+    await udp.SendAsync(ackBytes, ackBytes.Length, remoteEndPoint);
+    Console.WriteLine($"Sent ACK seq={ack.Sequence} to {remoteEndPoint}");
 }
 
 static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
@@ -196,12 +208,7 @@ static async Task FireOrderSender()
         var payload = Encoding.UTF8.GetBytes($"message {seq}");
         var packet = RudpPacket.Data(seq, payload);
 
-        byte[] data = RudpPacketCodec.Encode(packet);
-
-        await udp.SendAsync(data, data.Length, target);
-
-        Console.WriteLine($"Fire DATA seq={seq}");
-
+        await SendData(udp, target, packet);
         await Task.Delay(100);
     }
 }
@@ -243,8 +250,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             }
             else
             {
-                await udp.SendAsync(data, data.Length, target);
-                Console.WriteLine($"window send DATA seq={sequence}");
+                await SendData(udp, target, packet);
             }
         }
 

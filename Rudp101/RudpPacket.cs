@@ -70,5 +70,5 @@ public sealed class RudpPacket
 
     public static RudpPacket Data(uint sequence, byte[] payload) => new() { Flags = PacketFlags.Data, Sequence = sequence, Payload = payload };
 
-    public static RudpPacket Ack(uint seqence) => new() { Flags = PacketFlags.Ack, Sequence = seqence, Payload = Array.Empty<Byte>() };
+    public static RudpPacket Ack(uint sequence) => new() { Flags = PacketFlags.Ack, Sequence = sequence, Payload = Array.Empty<byte>() };
 }
