@@ -1,8 +1,6 @@
-﻿using System.Collections.Concurrent;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 
 const int timeoutMs = 500;
 const int maxRetries = 5;
@@ -41,8 +39,16 @@ static async Task RunReceiver(bool dropFirstAck)
 
     // 期望接收的包序号
     uint expectedSequence = 1;
+    // 缓存乱序包，表示提前到达但还不能交付
+    var pendingPackets = new Dictionary<uint, RudpPacket>();
     // 模拟丢弃ACK包
     bool firstAckDropped = false;
+
+    // 交付给业务层
+    void Deliver(UdpReceiveResult result, RudpPacket packet)
+    {
+        Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+    }
 
     // 循环ReceiveAsync
     while (true)
@@ -59,20 +65,34 @@ static async Task RunReceiver(bool dropFirstAck)
                 continue;
             }
 
-            // 旧包(重复包)已接收过
+            // 旧包(重复包)已接收过，丢弃但仍ACK
             if(packet.Sequence < expectedSequence)
             {
                 Console.WriteLine($"Duplicate DATA seq={packet.Sequence}, payload ignored");
             }
-            // 只交付预期包，其他丢弃但仍然ACK
+            // 只交付预期包，并且查看缓存中是否有下一seq包
             else if(packet.Sequence == expectedSequence)
             {
-                Console.WriteLine($"From {result.RemoteEndPoint}: {packet.Flags} {packet.Sequence} {Encoding.UTF8.GetString(packet.Payload)}");
+                Deliver(result, packet);
                 expectedSequence++;
+
+                while(pendingPackets.Remove(expectedSequence, out RudpPacket? pendingPacket))
+                {
+                    Deliver(result, pendingPacket);
+                    expectedSequence++;
+                }
             }
+            // 乱序包进行缓存
             else
             {
-                Console.WriteLine($"Out-of-order DATA seq={packet.Sequence}, expected={expectedSequence} payload={Encoding.UTF8.GetString(packet.Payload)}");
+                if(pendingPackets.TryAdd(packet.Sequence, packet))
+                {
+                    Console.WriteLine($"Buffered out-of-order DATA seq={packet.Sequence}, expected={expectedSequence}");
+                }
+                else
+                {
+                    Console.WriteLine($"Duplicate buffered DATA seq={packet.Sequence}, payload ignored");
+                }
             }
             
             // 确认已ACK的包
