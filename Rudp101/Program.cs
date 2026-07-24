@@ -167,7 +167,7 @@ static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequ
     Console.WriteLine($"Sent ACK seq={ack.Sequence} to {remoteEndPoint}");
 }
 
-static async Task<RudpPacket> ReceiveAck(UdpClient udp, int timeoutMs)
+static async Task<RudpPacket?> ReceiveAck(UdpClient udp, int timeoutMs)
 {
     using var timeoutCts = new CancellationTokenSource(timeoutMs);
 
@@ -176,7 +176,7 @@ static async Task<RudpPacket> ReceiveAck(UdpClient udp, int timeoutMs)
 
     if(packet.Flags != PacketFlags.Ack)
     {
-        Console.WriteLine($"window received non-ACK: {packet.Flags}");
+        Console.WriteLine($"Received non-ACK: {packet.Flags}");
         return null;
     }
 
@@ -361,18 +361,20 @@ static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPack
 
         try
         {
-            using var timeoutCts = new CancellationTokenSource(options.TimeoutMs);
+            RudpPacket? ack = await ReceiveAck(udp, options.TimeoutMs);
 
-            UdpReceiveResult result = await udp.ReceiveAsync(timeoutCts.Token);
-            RudpPacket ack = RudpPacketCodec.Decode(result.Buffer);
-
-            if(ack.Flags == PacketFlags.Ack && ack.Sequence == packet.Sequence)
+            if(ack is null)
             {
-                Console.WriteLine($"Received ACK seq={ack.Sequence} from {result.RemoteEndPoint}");
+                continue;
+            }
+
+            if(ack.Sequence == packet.Sequence)
+            {
+                Console.WriteLine($"Received ACK seq={ack.Sequence}");
                 return true;
             }
 
-            Console.WriteLine($"Received unexpected packet: {ack.Flags} seq={ack.Sequence}");
+            Console.WriteLine($"Received unexpected ACK seq={ack.Sequence}, expected={packet.Sequence}");
         }
         catch(OperationCanceledException)
         {
