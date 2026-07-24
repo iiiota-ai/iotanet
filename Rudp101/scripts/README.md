@@ -11,6 +11,7 @@ dotnet new console -n Rudp101
 dotnet run
 dotnet run -- receiver
 dotnet run -- sender
+#不重新编译运行项目
 dotnet run --no-build -- receiver
 dotnet run --no-build -- sender
 ```

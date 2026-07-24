@@ -15,7 +15,9 @@ if(args.Length == 0)
 
 if(args[0] == "receiver")
 {
-    await RunReceiver();
+    // 是否丢弃首包
+    bool dropFirstAck = args.Length > 1 && args[1] == "dropack";
+    await RunReceiver(dropFirstAck);
 }
 else if(args[0] == "sender")
 {
@@ -31,7 +33,7 @@ else if(args[0] == "testordersender")
     await TestOrderSender();
 }
 
-static async Task RunReceiver()
+static async Task RunReceiver(bool dropFirstAck)
 {
     // 创建UdpClient，绑定9000端口
     using var udp = new UdpClient(9000);    
@@ -39,6 +41,7 @@ static async Task RunReceiver()
 
     // 期望接收的包序号
     uint expectedSequence = 1;
+    bool firstAckDropped = false;
     // 循环ReceiveAsync
     while (true)
     {
@@ -68,6 +71,14 @@ static async Task RunReceiver()
             else
             {
                 Console.WriteLine($"Out-of-order DATA seq={packet.Sequence}, expected={expectedSequence} payload={Encoding.UTF8.GetString(packet.Payload)}");
+            }
+
+            // 模拟首个 ACK 丢失，让 sender 超时重传
+            if(dropFirstAck && !firstAckDropped)
+            {
+                firstAckDropped = true;
+                Console.WriteLine($"Simulate lost Ack seq={packet.Sequence}");
+                continue;
             }
 
             // Ack确认包
@@ -156,7 +167,7 @@ static async Task<bool> SendWithRetry(UdpClient udp, IPEndPoint target, RudpPack
 {
     byte[] data = RudpPacketCodec.Encode(packet);
 
-    for(int attempt = 0; attempt < maxRetries; attempt++)
+    for(int attempt = 1; attempt <= maxRetries; attempt++)
     {
         await udp.SendAsync(data, data.Length, target);
         Console.WriteLine($"Sent DATA seq={packet.Sequence}, attempt={attempt}");
