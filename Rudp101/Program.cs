@@ -74,12 +74,15 @@ static async Task RunReceiver(bool dropFirstAck)
             {
                 Console.WriteLine($"Out-of-order DATA seq={packet.Sequence}, expected={expectedSequence} payload={Encoding.UTF8.GetString(packet.Payload)}");
             }
+            
+            // 确认已ACK的包
+            uint ackSequence = expectedSequence - 1;
 
             // 模拟首个 ACK 丢失，让 sender 超时重传
             if(dropFirstAck && !firstAckDropped)
             {
                 firstAckDropped = true;
-                Console.WriteLine($"Simulate lost Ack seq={packet.Sequence}");
+                Console.WriteLine($"Simulate lost Ack seq={ackSequence}");
                 continue;
             }
 
@@ -87,7 +90,7 @@ static async Task RunReceiver(bool dropFirstAck)
             var ack = new RudpPacket
             {
                 Flags = PacketFlags.Ack,
-                Sequence = packet.Sequence,
+                Sequence = ackSequence,
                 Payload = Array.Empty<Byte>()
             };
             byte[] ackBytes = RudpPacketCodec.Encode(ack);
@@ -124,7 +127,7 @@ static async Task RunSender(bool dropFirstData, bool reorder)
         };
         // 模拟丢弃第一个DATA包
         var shouldDropFirstData = dropFirstData && !firstDataDropped;
-        if (dropFirstData)
+        if (shouldDropFirstData)
         {
             firstDataDropped = true;
         }
