@@ -15,15 +15,17 @@ if(args.Length == 0)
 
 if(args[0] == "receiver")
 {
-    // 是否丢弃ACK包
+    // 是否模拟丢弃ACK包
     bool dropFirstAck = args.Length > 1 && args[1] == "dropack";
     await RunReceiver(dropFirstAck);
 }
 else if(args[0] == "sender")
 {
-    // 是否丢弃DATA包
+    // 是否模拟丢弃DATA包
     bool dropFirstData = args.Length > 1 && args[1] == "dropfirstdata";
-    await RunSender(dropFirstData);
+    // 是否模拟乱序发送
+    bool reorder = args.Length > 1 && args[1] == "reorder";
+    await RunSender(dropFirstData, reorder);
 }
 else if(args[0] == "testcodec")
 {
@@ -99,7 +101,7 @@ static async Task RunReceiver(bool dropFirstAck)
     }    
 }
 
-static async Task RunSender(bool dropFirstData)
+static async Task RunSender(bool dropFirstData, bool reorder)
 {    
     // 创建 UdpClient，并绑定一个系统分配的本地临时端口。
     using var udp = new UdpClient(0);
@@ -109,11 +111,16 @@ static async Task RunSender(bool dropFirstData)
 
     for(uint seq = 1; seq <= 3; seq++)
     {
+        uint newSeq = seq;
+        if (reorder && seq != 1)
+        {
+            newSeq = seq == 2 ? 3u : 2u;
+        }
         var packet = new RudpPacket
         {
             Flags = PacketFlags.Data,
-            Sequence = seq,
-            Payload = Encoding.UTF8.GetBytes($"message {seq}")
+            Sequence = newSeq,
+            Payload = Encoding.UTF8.GetBytes($"message {newSeq}")
         };
         // 模拟丢弃第一个DATA包
         var shouldDropFirstData = dropFirstData && !firstDataDropped;
