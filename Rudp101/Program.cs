@@ -110,8 +110,10 @@ static async Task RunReceiver(bool dropFirstAck, RudpOptions options)
                 continue;
             }
 
+            Console.WriteLine($"Receiver window expected={receiveState.ExpectedSequence}, size={receiveState.ReceiveWindowSize}");
+
             // Ack确认
-            await SendAck(udp, result.RemoteEndPoint, ackSequence);
+            await SendAck(udp, result.RemoteEndPoint, ackSequence, receiveState.ReceiveWindowSize);
         }
         catch(SocketException ex) when(
             ex.SocketErrorCode == SocketError.ConnectionReset ||
@@ -138,9 +140,9 @@ static async Task SendEncodedData(UdpClient udp, IPEndPoint target, uint sequenc
     Console.WriteLine($"{prefix} DATA seq={sequence}");
 }
 
-static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequence)
+static async Task SendAck(UdpClient udp, IPEndPoint remoteEndPoint, uint ackSequence, uint receiveWindow)
 {
-    var ack = RudpPacket.Ack(ackSequence);
+    var ack = RudpPacket.Ack(ackSequence, receiveWindow);
     byte[] ackBytes = RudpPacketCodec.Encode(ack);
 
     await udp.SendAsync(ackBytes, ackBytes.Length, remoteEndPoint);
@@ -263,7 +265,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                 continue;
             }
 
-            Console.WriteLine($"Window received ACK seq={packet.Sequence}");
+            Console.WriteLine($"Window received ACK seq={packet.Sequence}, rwnd={packet.ReceiveWindow}");
 
             if (window.TryAck(packet.Sequence))
             {

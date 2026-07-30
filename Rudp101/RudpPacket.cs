@@ -40,6 +40,10 @@ public static class RudpProtocol
     /// </summary>
     public const int SequenceSize = 4;
     /// <summary>
+    /// ReceiveWindow字段占用大小
+    /// </summary>
+    public const int ReceiveWindowSize = 4;
+    /// <summary>
     /// payload长度字段占用大小
     /// </summary>
     public const int LengthSize = 2;
@@ -47,7 +51,7 @@ public static class RudpProtocol
     /// <summary>
     /// 协议头总大小
     /// </summary>
-    public const int HeaderSize = MagicSize + VersionSize + FlagsSize + SequenceSize + LengthSize;
+    public const int HeaderSize = MagicSize + VersionSize + FlagsSize + SequenceSize + ReceiveWindowSize + LengthSize;
 }
 
 /// <summary>
@@ -67,8 +71,12 @@ public sealed class RudpPacket
     /// 载荷
     /// </summary>
     public required byte[] Payload { get; init; }
+    /// <summary>
+    /// 接收窗口大小
+    /// </summary>
+    public uint ReceiveWindow { get; init; }
 
-    public static RudpPacket Data(uint sequence, byte[] payload) => new() { Flags = PacketFlags.Data, Sequence = sequence, Payload = payload };
+    public static RudpPacket Data(uint sequence, byte[] payload) => new() { Flags = PacketFlags.Data, Sequence = sequence, ReceiveWindow = 0, Payload = payload };
 
-    public static RudpPacket Ack(uint sequence) => new() { Flags = PacketFlags.Ack, Sequence = sequence, Payload = Array.Empty<byte>() };
+    public static RudpPacket Ack(uint sequence, uint receiveWindow) => new() { Flags = PacketFlags.Ack, Sequence = sequence, ReceiveWindow = receiveWindow, Payload = Array.Empty<byte>() };
 }

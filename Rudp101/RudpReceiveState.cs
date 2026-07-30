@@ -17,6 +17,10 @@ public sealed class RudpReceiveState
 
     private readonly uint _receiveWindowSize;
 
+    public uint ExpectedSequence => _expectedSequence;
+
+    public uint ReceiveWindowSize => _receiveWindowSize;
+
     public RudpReceiveState(uint receiveWindowSize)
     {
         _receiveWindowSize = receiveWindowSize;

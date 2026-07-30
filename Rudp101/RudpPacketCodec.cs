@@ -7,7 +7,7 @@ public static class RudpPacketCodec
 {
 
     /// <summary>
-    /// 编码，[Magic][Version][Flags][Sequence][Length][Payload]
+    /// 编码，[Magic][Version][Flags][Sequence][ReceiveWindow][Length][Payload]
     /// </summary>
     public static byte[] Encode(RudpPacket packet)
     {
@@ -46,7 +46,12 @@ public static class RudpPacketCodec
         );
         start += RudpProtocol.SequenceSize;
 
-        // 写入 Length
+        // 写入 ReceiveWindow
+        length = RudpProtocol.ReceiveWindowSize;
+        BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(start, length), packet.ReceiveWindow);
+        start += RudpProtocol.ReceiveWindowSize;
+
+        // 写入 LengthSize
         length = RudpProtocol.LengthSize;
         BinaryPrimitives.WriteUInt16BigEndian(
             buffer.AsSpan(start, length),
@@ -61,7 +66,7 @@ public static class RudpPacketCodec
     }
 
     /// <summary>
-    /// 解码器，[Magic][Version][Flags][Sequence][Length][Payload]
+    /// 解码器，[Magic][Version][Flags][Sequence][ReceiveWindow][Length][Payload]
     /// </summary>
     public static RudpPacket Decode(byte[] buffer)
     {
@@ -98,6 +103,11 @@ public static class RudpPacketCodec
         uint sequence = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(start, length));
         start += length;
 
+        // 读取 ReceiveWindow
+        length = RudpProtocol.ReceiveWindowSize;
+        uint receiveWindow = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(start, length));
+        start += length;
+
         // 读取 Length
         length = RudpProtocol.LengthSize;
         ushort payloadLength = BinaryPrimitives.ReadUInt16BigEndian(buffer.AsSpan(start, length));
@@ -115,6 +125,7 @@ public static class RudpPacketCodec
         {
             Flags = flags,
             Sequence = sequence,
+            ReceiveWindow = receiveWindow,
             Payload = payload,
         };
     }
