@@ -289,9 +289,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                 {
                     Console.WriteLine($"Window fast retransmit from seq={window.BaseSequence}");
 
-                    foreach(var item in window.GetPacketsForRetransmit())
+                    if(window.TryGetSentPacket(window.BaseSequence, out byte[]? data) && data is not null)
                     {
-                        await SendEncodedData(udp, target, item.Key, item.Value, "Window fast resend");
+                        await SendEncodedData(udp, target, window.BaseSequence, data, "Window fast resend");
                     }
 
                     duplicateAckCount = 0;

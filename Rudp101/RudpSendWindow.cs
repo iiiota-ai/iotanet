@@ -61,4 +61,9 @@ public sealed class RudpSendWindow
     {
         return _sentPackets.OrderBy(x => x.Key).ToList();
     }
+
+    public bool TryGetSentPacket(uint sequence, out byte[]? data)
+    {
+        return _sentPackets.TryGetValue(sequence, out data);
+    }
 }
