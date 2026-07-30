@@ -234,6 +234,13 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
     // retransmission timeout
     double currentRtoMs = options.TimeoutMs;
+    // 平滑RTT
+    double? srttMs = null;
+    // RTT偏差
+    double? rttVarMs = null;
+
+    const double alpha = 1.0 / 8.0;
+    const double beta = 1.0 / 4.0;
 
     // 还有未发消息
     while(!window.IsCompleted)
@@ -280,9 +287,22 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             if(window.CanSampleRtt(rttSequence) && window.TryGetSentAt(rttSequence, out DateTimeOffset sentAt))
             {
                 var rtt = DateTimeOffset.UtcNow - sentAt;
-                currentRtoMs = currentRtoMs * 0.8 + rtt.TotalMilliseconds * 2 * 0.2;
-                currentRtoMs = Math.Max(100, currentRtoMs);
-                Console.WriteLine($"RTT seq={window.BaseSequence}, ms={rtt.TotalMilliseconds:F0} rto={currentRtoMs:F0}");
+                double sampleRttMs = rtt.TotalMilliseconds;
+
+                if(srttMs is null || rttVarMs is null)
+                {
+                    srttMs = sampleRttMs;
+                    rttVarMs = sampleRttMs / 2;
+                }
+                else
+                {
+                    rttVarMs = (1 - beta) * rttVarMs.Value + beta * Math.Abs(srttMs.Value - sampleRttMs);
+                    srttMs = (1 - alpha) * srttMs.Value + alpha * sampleRttMs;
+                }
+
+                currentRtoMs = srttMs.Value + 4 * rttVarMs.Value;
+                currentRtoMs = Math.Clamp(currentRtoMs, 100, 3000);
+                Console.WriteLine($"RTT seq={window.BaseSequence}, sample={sampleRttMs:F0}, srtt={srttMs:F0}, rttvar={rttVarMs:F0}, rto={currentRtoMs:F0}");
             }
             else
             {
