@@ -302,7 +302,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
                 currentRtoMs = srttMs.Value + 4 * rttVarMs.Value;
                 currentRtoMs = Math.Clamp(currentRtoMs, 100, 3000);
-                Console.WriteLine($"RTT seq={window.BaseSequence}, sample={sampleRttMs:F0}, srtt={srttMs:F0}, rttvar={rttVarMs:F0}, rto={currentRtoMs:F0}");
+                Console.WriteLine($"RTT seq={rttSequence}, sample={sampleRttMs:F0}, srtt={srttMs:F0}, rttvar={rttVarMs:F0}, rto={currentRtoMs:F0}");
             }
             else
             {
@@ -348,6 +348,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         {
             // 超时则累加
             consecutiveTimeouts++;
+
+            currentRtoMs = Math.Min(currentRtoMs * 2, 3000);
+            Console.WriteLine($"RTO backoff, rto={currentRtoMs:F0}");
 
             if(consecutiveTimeouts >= options.MaxRetries)
             {
