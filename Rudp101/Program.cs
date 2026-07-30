@@ -285,7 +285,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                 }
                 Console.WriteLine($"Window duplicate ACK seq={packet.Sequence}, count={duplicateAckCount}, base={window.BaseSequence}");
                 
-                if(duplicateAckCount >= 3)
+                if(duplicateAckCount >= options.FastRetransmitDuplicateAckThreshold)
                 {
                     Console.WriteLine($"Window fast retransmit from seq={window.BaseSequence}");
 
@@ -293,7 +293,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                     {
                         await SendEncodedData(udp, target, item.Key, item.Value, "Window fast resend");
                     }
-                    
+
                     duplicateAckCount = 0;
                 }
                 continue;

@@ -7,4 +7,6 @@ public sealed class RudpOptions
     public uint WindowSize { get; init; } = 3;
 
     public uint TotalMessages { get; init; } = 6;
+    
+    public int FastRetransmitDuplicateAckThreshold { get; init; } = 3;
 }
