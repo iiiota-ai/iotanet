@@ -163,16 +163,6 @@ static async Task<RudpPacket?> ReceiveAck(UdpClient udp, int timeoutMs)
     return packet;
 }
 
-static byte[] CreatePayload(string text)
-{
-    return Encoding.UTF8.GetBytes(text);
-}
-
-static RudpPacket CreateDataPacket(uint sequence, string text)
-{
-    return RudpPacket.Data(sequence, CreatePayload(text));
-}
-
 static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions options)
 {    
     // 创建 UdpClient，并绑定一个系统分配的本地临时端口。
@@ -189,7 +179,7 @@ static async Task RunSender(bool dropFirstData, bool reorder, RudpOptions option
             newSeq = seq == 2 ? 3u : 2u;
         }
         
-        var packet = CreateDataPacket(newSeq, $"message {newSeq}");
+        var packet = DemoPayload.CreateMessagePacket(newSeq);
         
         // 模拟丢弃第一个DATA包
         var shouldDropFirstData = dropFirstData && !firstDataDropped;
@@ -215,7 +205,7 @@ static async Task FireOrderSender()
     uint[] order = [1, 3, 2];
     foreach(uint seq in order)
     {
-        var packet = CreateDataPacket(seq, $"message {seq}");
+        var packet = DemoPayload.CreateMessagePacket(seq);
 
         await SendData(udp, target, packet);
         await Task.Delay(100);
@@ -242,7 +232,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         while(window.CanSend)
         {
             var sequence = window.NextSequence;
-            var packet = CreateDataPacket(sequence, $"message {sequence}");
+            var packet = DemoPayload.CreateMessagePacket(sequence);
             byte[] data = RudpPacketCodec.Encode(packet);
 
             window.MarkSent(packet.Sequence, data);
@@ -310,7 +300,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
 static byte[] TestEncode()
 {
-    var packet = CreateDataPacket(1, "你好，rudp");
+    var packet = DemoPayload.CreateDataPacket(1, "你好，rudp");
 
     Console.WriteLine($"TestEncode Flags:{packet.Flags} Sequence:{packet.Sequence} Payload:{Encoding.UTF8.GetString(packet.Payload)}");
 
