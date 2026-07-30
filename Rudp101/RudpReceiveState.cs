@@ -15,9 +15,22 @@ public sealed class RudpReceiveState
 
     public uint LastAckSequence => _expectedSequence - 1;
 
+    private readonly uint _receiveWindowSize;
+
+    public RudpReceiveState(uint receiveWindowSize)
+    {
+        _receiveWindowSize = receiveWindowSize;
+    }
+
     public IReadOnlyList<RudpPacket> Accept(RudpPacket packet)
     {
         var delivered = new List<RudpPacket>();
+
+        if(packet.Sequence >= _expectedSequence + _receiveWindowSize)
+        {
+            Console.WriteLine($"Drop out-of-window DATA seq={packet.Sequence}, expected={_expectedSequence}");
+            return delivered;
+        }
 
         // 旧包(重复包)已接收过，丢弃但仍ACK
         if(packet.Sequence < _expectedSequence)

@@ -14,7 +14,7 @@ if (string.IsNullOrEmpty(command.Mode))
 if(command.Mode == "receiver")
 {
     // 是否模拟丢弃ACK包
-    await RunReceiver(command.DropFirstAck);
+    await RunReceiver(command.DropFirstAck, options);
 }
 else if(command.Mode == "sender")
 {
@@ -42,13 +42,13 @@ else if(command.TestCodec)
     TestDecode(bytes);
 }
 
-static async Task RunReceiver(bool dropFirstAck)
+static async Task RunReceiver(bool dropFirstAck, RudpOptions options)
 {
     // 创建UdpClient，绑定9000端口
     using var udp = new UdpClient(9000);    
     Console.WriteLine($"Receiver listening on 127.0.0.1:9000");
 
-    var receiveState = new RudpReceiveState();
+    var receiveState = new RudpReceiveState(options.ReceiveWindowSize);
 
     // 模拟丢弃ACK包
     bool firstAckDropped = false;
