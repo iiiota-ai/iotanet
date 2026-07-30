@@ -271,6 +271,13 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
             Console.WriteLine($"Window received ACK seq={packet.Sequence}, rwnd={packet.ReceiveWindow}, inFlight={window.InFlightCount}");
 
+            uint ackSequence = packet.Sequence;
+            if(window.TryGetSentAt(window.BaseSequence, out DateTimeOffset sentAt))
+            {
+                var rtt = DateTimeOffset.UtcNow - sentAt;
+                Console.WriteLine($"RTT seq={window.BaseSequence}, ms={rtt.TotalMilliseconds:F0}");
+            }
+
             if (window.TryAck(packet.Sequence))
             {
                 // 窗口移动则重置
@@ -298,6 +305,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                     if(window.TryGetSentPacket(window.BaseSequence, out byte[]? data) && data is not null)
                     {
                         await SendEncodedData(udp, target, window.BaseSequence, data, "Window fast resend");
+                        window.MarkRetransmitted(window.BaseSequence);
                     }
 
                     duplicateAckCount = 0;
@@ -322,6 +330,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             foreach(var item in retryPackets)
             {
                 await SendEncodedData(udp, target, item.Key, item.Value, "Window resend");
+                window.MarkRetransmitted(item.Key);
             }
         }
     }

@@ -28,6 +28,11 @@ public sealed class RudpSendWindow
 
     public uint InFlightCount => NextSequence - BaseSequence;
 
+    /// <summary>
+    /// 发送时间
+    /// </summary>
+    private readonly Dictionary<uint, DateTimeOffset> _sentAt = new();
+
     public RudpSendWindow(uint totalMessages, uint windowSize)
     {
         _totalMessages = totalMessages;
@@ -38,6 +43,7 @@ public sealed class RudpSendWindow
     {
         _sentPackets[sequence] = data;
         NextSequence = sequence + 1;
+        _sentAt[sequence] = DateTimeOffset.UtcNow;
     }
 
     public bool TryAck(uint ackSequence)
@@ -54,6 +60,7 @@ public sealed class RudpSendWindow
         for(uint seq = oldBase; seq < BaseSequence; seq++)
         {
             _sentPackets.Remove(seq);
+            _sentAt.Remove(seq);
         }
 
         return true;
@@ -67,5 +74,15 @@ public sealed class RudpSendWindow
     public bool TryGetSentPacket(uint sequence, out byte[]? data)
     {
         return _sentPackets.TryGetValue(sequence, out data);
+    }
+
+    public void MarkRetransmitted(uint sequence)
+    {
+        _sentAt[sequence] = DateTimeOffset.UtcNow;
+    }
+
+    public bool TryGetSentAt(uint sequence, out DateTimeOffset sentAt)
+    {
+        return _sentAt.TryGetValue(sequence, out sentAt);
     }
 }
