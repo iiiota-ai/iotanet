@@ -33,6 +33,11 @@ public sealed class RudpSendWindow
     /// </summary>
     private readonly Dictionary<uint, DateTimeOffset> _sentAt = new();
 
+    /// <summary>
+    /// 发生过重传的packet
+    /// </summary>
+    private readonly HashSet<uint> _retransmittedSequences = new();
+
     public RudpSendWindow(uint totalMessages, uint windowSize)
     {
         _totalMessages = totalMessages;
@@ -61,6 +66,7 @@ public sealed class RudpSendWindow
         {
             _sentPackets.Remove(seq);
             _sentAt.Remove(seq);
+            _retransmittedSequences.Remove(seq);
         }
 
         return true;
@@ -78,11 +84,16 @@ public sealed class RudpSendWindow
 
     public void MarkRetransmitted(uint sequence)
     {
-        _sentAt[sequence] = DateTimeOffset.UtcNow;
+        _retransmittedSequences.Add(sequence);
     }
 
     public bool TryGetSentAt(uint sequence, out DateTimeOffset sentAt)
     {
         return _sentAt.TryGetValue(sequence, out sentAt);
+    }
+
+    public bool CanSampleRtt(uint sequence)
+    {
+        return !_retransmittedSequences.Contains(sequence);
     }
 }

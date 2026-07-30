@@ -275,12 +275,18 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             Console.WriteLine($"Window received ACK seq={packet.Sequence}, rwnd={packet.ReceiveWindow}, inFlight={window.InFlightCount}");
 
             uint ackSequence = packet.Sequence;
-            if(window.TryGetSentAt(window.BaseSequence, out DateTimeOffset sentAt))
+            uint rttSequence = window.BaseSequence;
+
+            if(window.CanSampleRtt(rttSequence) && window.TryGetSentAt(rttSequence, out DateTimeOffset sentAt))
             {
                 var rtt = DateTimeOffset.UtcNow - sentAt;
                 currentRtoMs = currentRtoMs * 0.8 + rtt.TotalMilliseconds * 2 * 0.2;
                 currentRtoMs = Math.Max(100, currentRtoMs);
                 Console.WriteLine($"RTT seq={window.BaseSequence}, ms={rtt.TotalMilliseconds:F0} rto={currentRtoMs:F0}");
+            }
+            else
+            {
+                Console.WriteLine($"Skip RTT sample seq={rttSequence}");
             }
 
             if (window.TryAck(ackSequence))
