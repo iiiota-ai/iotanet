@@ -225,6 +225,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
     // 连续超时计数器
     int consecutiveTimeouts = 0;
 
+    uint? lastDuplicateAck = null;
+    int duplicateAckCount = 0;
+
     // 还有未发消息
     while(!window.IsCompleted)
     {
@@ -266,10 +269,33 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             {
                 // 窗口移动则重置
                 consecutiveTimeouts = 0;
+                lastDuplicateAck = null;
+                duplicateAckCount = 0;
             }
             else
             {
-                Console.WriteLine($"Window duplicate ACK seq={packet.Sequence}, base={window.BaseSequence}");
+                if(lastDuplicateAck == packet.Sequence)
+                {
+                    duplicateAckCount++;
+                }
+                else
+                {
+                    lastDuplicateAck = packet.Sequence;
+                    duplicateAckCount = 1;
+                }
+                Console.WriteLine($"Window duplicate ACK seq={packet.Sequence}, count={duplicateAckCount}, base={window.BaseSequence}");
+                
+                if(duplicateAckCount >= 3)
+                {
+                    Console.WriteLine($"Window fast retransmit from seq={window.BaseSequence}");
+
+                    foreach(var item in window.GetPacketsForRetransmit())
+                    {
+                        await SendEncodedData(udp, target, item.Key, item.Value, "Window fast resend");
+                    }
+                    
+                    duplicateAckCount = 0;
+                }
                 continue;
             }
         }

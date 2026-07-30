@@ -14,7 +14,7 @@ public static class DemoPayload
 
     public static RudpPacket CreateMessagePacket(uint sequence)
     {
-        return CreateDataPacket(sequence, $"messsage {sequence}");
+        return CreateDataPacket(sequence, $"message {sequence}");
     }
 
 }
