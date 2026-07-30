@@ -26,6 +26,8 @@ public sealed class RudpSendWindow
 
     public bool CanSend => NextSequence <= _totalMessages && NextSequence < BaseSequence + _windowSize;
 
+    public uint InFlightCount => NextSequence - BaseSequence;
+
     public RudpSendWindow(uint totalMessages, uint windowSize)
     {
         _totalMessages = totalMessages;

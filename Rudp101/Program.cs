@@ -229,12 +229,14 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
 
     uint? lastDuplicateAck = null;
     int duplicateAckCount = 0;
+    
+    uint advertisedReceiveWindow = options.WindowSize;
 
     // 还有未发消息
     while(!window.IsCompleted)
     {
         // 尽量填满窗口
-        while(window.CanSend)
+        while(window.CanSend && window.InFlightCount < advertisedReceiveWindow)
         {
             var sequence = window.NextSequence;
             var packet = DemoPayload.CreateMessagePacket(sequence);
@@ -264,8 +266,10 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             {
                 continue;
             }
+            
+            advertisedReceiveWindow = packet.ReceiveWindow;
 
-            Console.WriteLine($"Window received ACK seq={packet.Sequence}, rwnd={packet.ReceiveWindow}");
+            Console.WriteLine($"Window received ACK seq={packet.Sequence}, rwnd={packet.ReceiveWindow}, inFlight={window.InFlightCount}");
 
             if (window.TryAck(packet.Sequence))
             {
