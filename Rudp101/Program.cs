@@ -242,11 +242,16 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
     const double alpha = 1.0 / 8.0;
     const double beta = 1.0 / 4.0;
 
+    // 拥塞窗口
+    uint congestionWindow = 1;
+
     // 还有未发消息
     while(!window.IsCompleted)
     {
+        uint effectiveWindow = Math.Min(advertisedReceiveWindow, congestionWindow);
+
         // 尽量填满窗口
-        while(window.CanSend && window.InFlightCount < advertisedReceiveWindow)
+        while(window.CanSend && window.InFlightCount < effectiveWindow)
         {
             var sequence = window.NextSequence;
             var packet = DemoPayload.CreateMessagePacket(sequence);
@@ -315,6 +320,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
                 consecutiveTimeouts = 0;
                 lastDuplicateAck = null;
                 duplicateAckCount = 0;
+
+                congestionWindow++;
+                Console.WriteLine($"Congestion cwnd={congestionWindow}");
             }
             else
             {
@@ -348,6 +356,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         {
             // 超时则累加
             consecutiveTimeouts++;
+
+            congestionWindow = 1;
+            Console.WriteLine($"Congestion timeout, cwnd={congestionWindow}");
 
             currentRtoMs = Math.Min(currentRtoMs * 2, 3000);
             Console.WriteLine($"RTO backoff, rto={currentRtoMs:F0}");
