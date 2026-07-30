@@ -232,6 +232,9 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
     
     uint advertisedReceiveWindow = options.WindowSize;
 
+    // retransmission timeout
+    double currentRtoMs = options.TimeoutMs;
+
     // 还有未发消息
     while(!window.IsCompleted)
     {
@@ -260,7 +263,7 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
         // 等ACK或超时
         try
         {
-            RudpPacket? packet = await ReceiveAck(udp, options.TimeoutMs);
+            RudpPacket? packet = await ReceiveAck(udp, (int)currentRtoMs);
             
             if(packet is null)
             {
@@ -275,10 +278,12 @@ static async Task<RudpSendResult> WindowSender(uint? dropFirstSendOfSequence, Ru
             if(window.TryGetSentAt(window.BaseSequence, out DateTimeOffset sentAt))
             {
                 var rtt = DateTimeOffset.UtcNow - sentAt;
-                Console.WriteLine($"RTT seq={window.BaseSequence}, ms={rtt.TotalMilliseconds:F0}");
+                currentRtoMs = currentRtoMs * 0.8 + rtt.TotalMilliseconds * 2 * 0.2;
+                currentRtoMs = Math.Max(100, currentRtoMs);
+                Console.WriteLine($"RTT seq={window.BaseSequence}, ms={rtt.TotalMilliseconds:F0} rto={currentRtoMs:F0}");
             }
 
-            if (window.TryAck(packet.Sequence))
+            if (window.TryAck(ackSequence))
             {
                 // 窗口移动则重置
                 consecutiveTimeouts = 0;
