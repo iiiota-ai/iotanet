@@ -2,6 +2,8 @@
 bin/
 obj/
 artifacts/
+.codex-build/
+.nuget-appdata/
 
 # .NET generated files
 *.user

@@ -33,13 +33,13 @@ Step 10：sliding window
 建议项目名：
 
 ```text
-Rudp101
+Rudp.Demo
 ```
 
 建议命令：
 
 ```powershell
-dotnet new console -n Rudp101
+dotnet new console -n Rudp.Demo
 ```
 
 验收标准：

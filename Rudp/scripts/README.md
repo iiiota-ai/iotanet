@@ -3,7 +3,7 @@
 
 ```sh
 # 创建console项目
-dotnet new console -n Rudp101
+dotnet new console -n Rudp.Demo
 ```
 
 ```sh
